@@ -244,6 +244,34 @@ def account(j):
     return o.get("target") or ("baseUrl " + o["baseUrl"] if o.get("baseUrl") else default)
 
 
+# Why a job did not complete. Only "task" is a failure of the task itself: the
+# others never let it fail on merit - the provider refused it (quota, credits,
+# an expired key), a launch or integration bug stopped it, the idle watchdog
+# killed it, an engine restart lost it, or it was cancelled.
+QUOTA = re.compile(r"usage limit|hit your \w+ limit|spend limit|limit exceeded|purchase more credits|API key has expired", re.I)
+LAUNCH = re.compile(r"not supported when using Codex with a ChatGPT account|command line is too long|401 Unauthorized|"
+                    r"empty token|No such agent|UnsupportedWindowsCommandValue|cannot start .*chdir|"
+                    r"processTicksAndRejections|failed to record rollout items")
+
+
+def failure_cause(j):
+    if j["status"] in ("lost", "cancelled"):
+        return j["status"]
+    ld = j["log_dir"] or ""
+    text = (j["result_json"] or "") + read(os.path.join(ld, "stderr.log"))[-4096:]
+    if j["runtime"] == "claude-code" and os.path.isfile(os.path.join(ld, "stdout.log")):
+        text += " ".join(str(e.get("result")) for e in jsonl(os.path.join(ld, "stdout.log")) if e.get("type") == "result")
+    for cause, hit in (("quota", QUOTA.search(text)), ("launch", LAUNCH.search(text)), ("watchdog", "idle timeout" in text)):
+        if hit:
+            return cause
+    return "task"
+
+
+causes = Counter(failure_cause(j) for j in jobs if j["status"] in ("failed", "lost", "cancelled"))
+completed = sum(j["status"] == "completed" for j in jobs)
+put("unsuccessful jobs by cause", dict(causes.most_common()))
+put("task success rate %", round(100 * completed / (completed + causes["task"]), 1))
+
 CLASSES = ("input", "cache_read", "cache_write", "output")
 groups, coverage, cl = {}, Counter(), Counter()
 participants = [("job", j["runtime"], account(j), j, job_usage(j)) for j in jobs]

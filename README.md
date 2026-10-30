@@ -985,7 +985,8 @@ landed on 30 October.
 | KPI | Value |
 |---|---|
 | Worker jobs delegated | **1,018** |
-| Job success rate | **87.0 %** (886 completed, 107 failed, 15 cancelled, 10 lost) |
+| Task success rate | **98.8 %**: 886 completed, 11 failed on the task itself, 10 of them shell checks that came back red |
+| Stopped before the task could succeed or fail, left out of the rate | 121: 42 refused by the provider (quota, credits, an expired key), 37 hit launch and integration bugs, most of them fixed since, 17 killed by the idle watchdog, 10 lost in engine restarts, 15 cancelled |
 | Worker agent-hours | **128 h** |
 | Job duration, median / p90 / longest | 4 min / 17 min / 3.1 h |
 | Peak parallel workers | **6** |
@@ -1055,6 +1056,19 @@ repository. **Longshot is largely built by Longshot.**
 
 - **Job.** One delegated worker process. Durations run from start to end. They
   leave out `lost` jobs, whose end time only marks when recovery noticed them.
+- **Task success rate.** Completed jobs out of the jobs whose task reached an
+  outcome. A job that never got that far is classified by the error it left
+  and is left out:
+  - a provider refusal: quota, credits, an expired key;
+  - a launch or integration bug: a brief too long for the command line, a
+    wrong role name, a model the account does not serve, missing auth, a CLI
+    build that crashed on start, a worktree path that was gone;
+  - the idle watchdog, which until mid-September also killed Claude Code
+    workers that were silent only because their output was not streamed;
+  - an engine restart that lost the worker;
+  - a cancellation.
+
+  Counting every unsuccessful job as a failure, the rate is 87.0 %.
 - **Wake-up.** A coordinator turn that Longshot started to deliver worker
   results. One wake-up can carry several batched events.
 - **Engine session.** One mission lease: one engine process holding a mission
